@@ -1,0 +1,172 @@
+name: gaming-clipper
+x-security: &security
+  logging: {driver: json-file, options: {max-size: "10m", max-file: "3"}}
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+  mem_limit: 512m
+  cpus: 1.0
+  pids_limit: 128
+x-env: &env
+  APP_ENV: production
+  IMPORT_MAX_BYTES: ${IMPORT_MAX_BYTES:-8589934592}
+  IMPORT_MAX_DURATION_SECONDS: ${IMPORT_MAX_DURATION_SECONDS:-14400}
+  IMPORT_DOWNLOAD_SECONDS: ${IMPORT_DOWNLOAD_SECONDS:-3600}
+  IMPORT_VERIFY_SECONDS: ${IMPORT_VERIFY_SECONDS:-1800}
+  IMPORT_BYTES_PER_SECOND: ${IMPORT_BYTES_PER_SECOND:-8388608}
+  IMPORT_RESERVE_BYTES: ${IMPORT_RESERVE_BYTES:-536870912}
+  MAX_UPLOAD_BYTES: ${MAX_UPLOAD_BYTES:-536870912}
+  MAX_DURATION_SECONDS: ${MAX_DURATION_SECONDS:-3600}
+  RECORDING_QUOTA_BYTES: ${RECORDING_QUOTA_BYTES:-21474836480}
+  EXPORT_QUOTA_BYTES: ${EXPORT_QUOTA_BYTES:-5368709120}
+  AUTO_TARGET_MIN_SECONDS: ${AUTO_TARGET_MIN_SECONDS:-20}
+  AUTO_TARGET_MAX_SECONDS: ${AUTO_TARGET_MAX_SECONDS:-60}
+  MEDIA_TIMEOUT_SECONDS: ${MEDIA_TIMEOUT_SECONDS:-300}
+  LIVE_BUFFER_SECONDS: ${LIVE_BUFFER_SECONDS:-120}
+  LIVE_BUFFER_BYTES: ${LIVE_BUFFER_BYTES:-268435456}
+  LIVE_IDLE_SECONDS: ${LIVE_IDLE_SECONDS:-180}
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  CORS_ORIGINS: '${CORS_ORIGINS:-[]}'
+  POSTGRES_USER: ${POSTGRES_USER:-clipper}
+  POSTGRES_DB: ${POSTGRES_DB:-clipper}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+  REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+x-backend: &backend
+  <<: *security
+  build: {context: ., dockerfile: infrastructure/docker/backend.Dockerfile, target: runtime}
+  environment: *env
+  read_only: true
+  tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777"]
+services:
+  db:
+    restart: unless-stopped
+    networks: [private]
+    <<: *security
+    build: {context: ., dockerfile: infrastructure/docker/postgres.Dockerfile}
+    user: postgres
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-clipper}
+      APP_DB_USER: ${POSTGRES_USER:-clipper}
+      APP_DB_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./infrastructure/scripts/init-db.sh:/docker-entrypoint-initdb.d/10-app.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  redis:
+    restart: unless-stopped
+    networks: [private]
+    <<: *security
+    image: redis:8.2-alpine
+    user: redis
+    environment:
+      REDISCLI_AUTH: ${REDIS_PASSWORD:?Set REDIS_PASSWORD}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        case "$$REDISCLI_AUTH" in *[!a-fA-F0-9]*|'') exit 1 ;; esac
+        printf 'requirepass %s\n' "$$REDISCLI_AUTH" | exec redis-server - --appendonly yes --maxmemory 192mb --maxmemory-policy noeviction
+    volumes: [redis-data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli ping | grep -qx PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+  migrate:
+    networks: [private]
+    <<: *backend
+    command: [alembic, upgrade, head]
+    depends_on:
+      db: {condition: service_healthy}
+  api:
+    networks: [private, web]
+    restart: unless-stopped
+    <<: *backend
+    environment:
+      <<: *env
+      HIGHLIGHT_WEIGHTS: '${HIGHLIGHT_WEIGHTS:-{}}'
+      STUDIO_ORIGIN: ${STUDIO_ORIGIN:-http://127.0.0.1:8080}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:-}
+      TWITCH_CLIENT_ID: ${TWITCH_CLIENT_ID:-}
+      TWITCH_CLIENT_SECRET: ${TWITCH_CLIENT_SECRET:-}
+      OAUTH_ENCRYPTION_KEY: ${OAUTH_ENCRYPTION_KEY:-}
+      OPERATOR_KEY: ${OPERATOR_KEY:?Generate the studio operator key}
+    volumes: [media-data:/var/lib/clipper]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready', timeout=10)"]
+      interval: 15s
+      timeout: 12s
+      retries: 3
+  worker:
+    networks: [private]
+    restart: unless-stopped
+    stop_grace_period: 31m
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery inspect ping -d celery@$$HOSTNAME -t 4"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+    <<: *backend
+    volumes: [media-data:/var/lib/clipper]
+    command: [celery, -A, app.workers.celery, worker, --concurrency=1, --beat, --schedule=/tmp/celerybeat-schedule, --pidfile=/tmp/celery.pid]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+  importer:
+    <<: *backend
+    networks: [private, web]
+    restart: unless-stopped
+    command: [celery, -A, app.workers.celery, worker, -Q, imports, --concurrency=1, --hostname=imports@%h]
+    volumes: [media-data:/var/lib/clipper]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery inspect ping -d imports@$$HOSTNAME -t 4"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+  analysis:
+    networks: [private]
+    restart: unless-stopped
+    stop_grace_period: 31m
+    healthcheck:
+      test: ["CMD-SHELL", "celery -A app.workers.celery inspect ping -d analysis@$$HOSTNAME -t 4"]
+      interval: 60s
+      timeout: 10s
+      start_period: 30s
+    <<: *backend
+    build: {context: ., dockerfile: infrastructure/docker/backend.Dockerfile, target: analysis}
+    command: [celery, -A, app.workers.celery, worker, -Q, analysis, --concurrency=1, --max-tasks-per-child=100, --hostname=analysis@%h]
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=768m,mode=1777"]
+    mem_limit: 2g
+    volumes: [media-data:/var/lib/clipper:ro]
+    depends_on:
+      migrate: {condition: service_completed_successfully}
+      redis: {condition: service_healthy}
+  frontend:
+    networks: [web]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:8080/"]
+      interval: 30s
+    <<: *security
+    build: {context: ., dockerfile: infrastructure/docker/frontend.Dockerfile, target: runtime}
+    ports: ["127.0.0.1:8080:8080"]
+    read_only: true
+    tmpfs: ["/tmp:rw,nosuid,nodev,noexec,size=256m,mode=1777"]
+    depends_on: [api]
+networks:
+  private: {internal: true}
+  web: {}
+volumes:
+  media-data:
+  db-data:
+  redis-data:

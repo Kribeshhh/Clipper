@@ -1,0 +1,10 @@
+services:
+  frontend:
+    ports: !override ["127.0.0.1:8443:8443"]
+    volumes:
+      - ./infrastructure/docker/tls.conf:/etc/nginx/studio.d/tls.conf:ro
+      - ${TLS_CERT_FILE:?Set the absolute TLS certificate path}:/etc/nginx/studio.crt:ro
+      - ${TLS_KEY_FILE:?Set the absolute TLS key path}:/etc/nginx/studio.key:ro
+  api:
+    environment:
+      STUDIO_ORIGIN: ${STUDIO_ORIGIN:-https://localhost:8443}

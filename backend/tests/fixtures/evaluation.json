@@ -1,0 +1,50 @@
+[
+  {
+    "name": "bridge",
+    "start": 8,
+    "end": 22.617,
+    "text": "Can we cross this broken bridge before the timer runs out? The last plank is missing and the river is far below us. I am going to build a ramp with the spare wood. Watch this jump. Wow, we actually made it across! The whole team is safe on the other side.",
+    "file": "eval-bridge.flac",
+    "reference": "Preserve the opening question, explanation, and final resolution. Centered moving pattern is the known visual subject."
+  },
+  {
+    "name": "key",
+    "start": 78,
+    "end": 94.613,
+    "text": "Where is the key to this castle? We searched every bedroom and opened all the boxes in the kitchen. Nobody checked the front entrance because we thought it was locked. Wait a second, try pushing the door. No way! It turns out the door was open the entire time. That was a very expensive key hunt.",
+    "file": "eval-key.flac",
+    "reference": "Preserve the opening question, explanation, and final resolution. Centered moving pattern is the known visual subject."
+  },
+  {
+    "name": "rescue",
+    "start": 148,
+    "end": 163.896,
+    "text": "Can we rescue the stranded pilot before the storm arrives? Our helicopter only has enough fuel for one landing. There are trees on both sides of the narrow clearing. I will hover while you lower the rope. Wow, the pilot caught it! We have everyone aboard and we are heading back to base.",
+    "file": "eval-rescue.flac",
+    "reference": "Preserve the opening question, explanation, and final resolution. Centered moving pattern is the known visual subject."
+  },
+  {
+    "name": "race",
+    "start": 218,
+    "end": 233.74,
+    "text": "How did that tiny car catch the race leader? It was in last place at the start of the final lap. The fast cars all stopped to change their tires. Our driver kept the old tires and took the short inside turn. Unbelievable! The little car just won the race by a single second.",
+    "file": "eval-race.flac",
+    "reference": "Preserve the opening question, explanation, and final resolution. Centered moving pattern is the known visual subject."
+  },
+  {
+    "name": "recipe",
+    "start": 288,
+    "end": 304.774,
+    "text": "What happens if we replace the sugar with salt in this cake? My brother mixed up the jars while we were cooking dinner. We only discovered the mistake after he took a huge bite. He says it tastes like the ocean. Haha! Now the entire family is ordering pizza and the cake is becoming a doorstop.",
+    "file": "eval-recipe.flac",
+    "reference": "Preserve the opening question, explanation, and final resolution. Centered moving pattern is the known visual subject."
+  },
+  {
+    "name": "puzzle",
+    "start": 358,
+    "end": 375.104,
+    "text": "Can we solve this puzzle using only three moves? Every colored tile has to reach the matching square at the edge. We keep trapping the red piece behind the blue one. Try moving the green tile backwards first. Wow, that actually worked! All the tiles are in place and the secret passage is finally open.",
+    "file": "eval-puzzle.flac",
+    "reference": "Preserve the opening question, explanation, and final resolution. Centered moving pattern is the known visual subject."
+  }
+]

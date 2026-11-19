@@ -1,0 +1,30 @@
+services:
+  frontend:
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+    build: {target: dev}
+    environment: {API_PROXY_TARGET: 'http://api:8000'}
+    read_only: false
+    ports: !override ["127.0.0.1:5173:5173"]
+    volumes:
+      - ./frontend/src:/app/src:ro
+  api:
+    build: {target: dev}
+    environment: {APP_ENV: development, STUDIO_ORIGIN: "${STUDIO_ORIGIN:-http://127.0.0.1:5173}"}
+    ports: ["127.0.0.1:8000:8000"]
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/migrations:/app/migrations:ro
+  migrate:
+    volumes:
+      - ./backend/app:/app/app:ro
+      - ./backend/migrations:/app/migrations:ro
+  importer:
+    volumes:
+      - ./backend/app:/app/app:ro
+  analysis:
+    volumes:
+      - ./backend/app:/app/app:ro
+  worker:
+    volumes:
+      - ./backend/app:/app/app:ro
